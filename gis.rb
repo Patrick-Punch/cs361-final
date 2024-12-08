@@ -1,163 +1,136 @@
 #!/usr/bin/env ruby
+require 'json'
 
-class Track
-  def initialize(segments, name=nil)
-    @name = name
-    segment_objects = []
-    segments.each do |s|
-      segment_objects.append(TrackSegment.new(s))
+module GeoJsonHelper
+  def self.coordinates_to_geojson(coordinates)
+    coordinates.map do |coord|
+      formatted_coord = [coord.lon, coord.lat]
+      formatted_coord.push(coord.ele) if coord.ele
+      formatted_coord
     end
-    # set segments to segment_objects
-    @segments = segment_objects
   end
 
-  def get_track_json()
-    j = '{'
-    j += '"type": "Feature", '
-    if @name != nil
-      j+= '"properties": {'
-      j += '"title": "' + @name + '"'
-      j += '},'
-    end
-    j += '"geometry": {'
-    j += '"type": "MultiLineString",'
-    j +='"coordinates": ['
-    # Loop through all the segment objects
-    @segments.each_with_index do |s, index|
-      if index > 0
-        j += ","
-      end
-      j += '['
-      # Loop through all the coordinates in the segment
-      tsj = ''
-      s.coordinates.each do |c|
-        if tsj != ''
-          tsj += ','
-        end
-        # Add the coordinate
-        tsj += '['
-        tsj += "#{c.lon},#{c.lat}"
-        if c.ele != nil
-          tsj += ",#{c.ele}"
-        end
-        tsj += ']'
-      end
-      j+=tsj
-      j+=']'
-    end
-    j + ']}}'
-  end
+def self.feature_to_geojson(type, geometry, properties = {})
+  {
+    type: 'Feature',
+    properties: properties.compact,
+    geometry: geometry
+}.to_json
 end
+end
+
 class TrackSegment
   attr_reader :coordinates
+
   def initialize(coordinates)
     @coordinates = coordinates
+  end
+
+  def coordinates_to_geojson
+    GeoJsonHelper.coordinates_to_geojson(@coordinates)
+  end
+end
+
+class Track
+  def initialize(segments, name = nil)
+    @name = name
+    @segments = segments.map { |segment| TrackSegment.new(segment) }
+  end
+
+  def to_geojson
+    coordinates = @segments.map(&:coordinates_to_geojson)
+    properties = { title: @name }.compact
+    geometry = { type: 'MultiLineString', coordinates: coordinates }
+
+    GeoJsonHelper.feature_to_geojson('Feature', geometry, properties)
   end
 end
 
 class Point
-
   attr_reader :lat, :lon, :ele
 
-  def initialize(lon, lat, ele=nil)
+  def initialize(lon, lat, ele = nil)
     @lon = lon
     @lat = lat
     @ele = ele
   end
+
+  def to_geojson
+    geometry = {
+      type: 'Point',
+      coordinates: [@lon, @lat, @ele].compact
+    }
+
+    GeoJsonHelper.feature_to_geojson('Feature', geometry, {})
+  end
 end
 
-class Waypoint
+class Waypoint < Point
+  attr_reader :name, :type
 
-
-
-attr_reader :lat, :lon, :ele, :name, :type
-
-  def initialize(lon, lat, ele=nil, name=nil, type=nil)
-    @lat = lat
-    @lon = lon
-    @ele = ele
+  def initialize(lon, lat, ele = nil, name = nil, type = nil)
+    super(lon, lat, ele)
     @name = name
     @type = type
   end
 
-  def get_waypoint_json(indent=0)
-    j = '{"type": "Feature",'
-    # if name is not nil or type is not nil
-    j += '"geometry": {"type": "Point","coordinates": '
-    j += "[#{@lon},#{@lat}"
-    if ele != nil
-      j += ",#{@ele}"
-    end
-    j += ']},'
-    if name != nil or type != nil
-      j += '"properties": {'
-      if name != nil
-        j += '"title": "' + @name + '"'
-      end
-      if type != nil  # if type is not nil
-        if name != nil
-          j += ','
-        end
-        j += '"icon": "' + @type + '"'  # type is the icon
-      end
-      j += '}'
-    end
-    j += "}"
-    return j
+  def to_geojson
+    geometry = {
+      type: 'Point',
+      coordinates: [@lon, @lat, @ele].compact
+    }
+
+    properties = { title: @name, icon: @type }.compact
+    GeoJsonHelper.feature_to_geojson('Feature', geometry, properties)
   end
 end
 
 class World
-def initialize(name, things)
-  @name = name
-  @features = things
-end
-  def add_feature(f)
-    @features.append(t)
+  def initialize(name, features = [])
+    @name = name
+    @features = features
   end
 
-  def to_geojson(indent=0)
-    # Write stuff
-    s = '{"type": "FeatureCollection","features": ['
-    @features.each_with_index do |f,i|
-      if i != 0
-        s +=","
-      end
-        if f.class == Track
-            s += f.get_track_json
-        elsif f.class == Waypoint
-            s += f.get_waypoint_json
-      end
-    end
-    s + "]}"
+  def add_feature(feature)
+    @features << feature
+  end
+
+  def to_geojson
+    features_geojson = @features.map { |feature| JSON.parse(feature.to_geojson) }
+    {
+      type: 'FeatureCollection',
+      features: features_geojson
+    }.to_json
   end
 end
 
-def main()
-  w = Waypoint.new(-121.5, 45.5, 30, "home", "flag")
-  w2 = Waypoint.new(-121.5, 45.6, nil, "store", "dot")
-  ts1 = [
-  Point.new(-122, 45),
-  Point.new(-122, 46),
-  Point.new(-121, 46),
+def main
+  waypoint_1 = Waypoint.new(-121.5, 45.5, 30, "home", "flag")
+  waypoint_2 = Waypoint.new(-121.5, 45.6, nil, "store", "dot")
+
+  track_seg_1 = [
+    Point.new(-122, 45),
+    Point.new(-122, 46),
+    Point.new(-121, 46)
   ]
-
-  ts2 = [ Point.new(-121, 45), Point.new(-121, 46), ]
-
-  ts3 = [
+  
+  track_seg_2 = [
+    Point.new(-121, 45),
+    Point.new(-121, 46)
+  ]
+  
+  track_seg_3 = [
     Point.new(-121, 45.5),
-    Point.new(-122, 45.5),
+    Point.new(-122, 45.5)
   ]
 
-  t = Track.new([ts1, ts2], "track 1")
-  t2 = Track.new([ts3], "track 2")
+  track_1 = Track.new([track_seg_1, track_seg_2], "track 1")
+  track_2 = Track.new([track_seg_3], "track 2")
 
-  world = World.new("My Data", [w, w2, t, t2])
-
-  puts world.to_geojson()
+  world = World.new("My Data", [waypoint_1, waypoint_2, track_1, track_2])
+  puts world.to_geojson
 end
 
-if File.identical?(__FILE__, $0)
-  main()
+if __FILE__ == $0
+  main
 end
-

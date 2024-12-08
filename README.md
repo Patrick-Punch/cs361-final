@@ -1,3 +1,8 @@
+## Summary of Changes
+
+	I refactored the code by moving the GeoJSON formatting into a GeoJsonHelper module, to apply the DRY principle. I used descriptive names, and used JSON serialization to align the code with the SRP. I applied Encapsulation by adding a coordinate formatter to TrackSegment to comply with the Law of Demeter, and used Dependency injection to keep the code flexible.
+
+
 ## GIS Tool
 
 Geographic Information Systems program.
